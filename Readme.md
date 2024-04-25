@@ -3,8 +3,7 @@ Simple tool for converting browser bookmarks from NETSCAPE-Bookmark-file-1 forma
 
 ## Installation
 ```
-dotnet pack
-dotnet tool install --global --add-source ./nupkg BrowserBookmarksToMd
+dotnet tool install --global BrowserBookmarksToMd
 ```
 ## Usage
   ```

@@ -10,6 +10,9 @@
     <PackageOutputPath>./nupkg</PackageOutputPath>
     <PackageReadmeFile>Readme.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageType>DotnetTool</PackageType>
+    <PackageProjectUrl>https://github.com/Mik1mak/BrowserBookmarksToMd</PackageProjectUrl>
+    <Authors>Mik1mak</Authors>
   </PropertyGroup>
 
   <ItemGroup>
