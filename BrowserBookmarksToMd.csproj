@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <PackAsTool>true</PackAsTool> 
     <ToolCommandName>bookmarks</ToolCommandName>
-    <PackageOutputPath>./nukpkg</PackageOutputPath>
+    <PackageOutputPath>./nupkg</PackageOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
