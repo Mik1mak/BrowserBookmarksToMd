@@ -22,14 +22,24 @@ var recordOption = new Option<string>("--record",
     IsRequired = false,
 };
 
-var rootCommand = new RootCommand("Converts HTML file with browser bookmarks to folders and Markdown files.")
+var outputOption = new Option<DirectoryInfo>("--output", 
+    isDefault: true,
+    parseArgument: result => {
+        return result.Tokens.Any() ? new DirectoryInfo(result.Tokens.Single().Value) : new DirectoryInfo(Environment.CurrentDirectory);
+    })
+{
+    IsRequired = false,
+};
+
+var rootCommand = new RootCommand("Simple tool for converting browser bookmarks from NETSCAPE-Bookmark-file-1 format to a folder and Markdown file structure.")
 {
     filePathArg,
     keepEmptyOption,
     recordOption,
+    outputOption,
 };
 
-rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string template) => { 
+rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string template, DirectoryInfo output) => { 
     HashSet<DirectoryInfo> createdDictionaries = new();
     HashSet<FileInfo> createdFiles = new();
     Dictionary<DirectoryInfo, StreamWriter> fileWriters = new();
@@ -61,7 +71,7 @@ rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string t
                         FileInfo newMdFile = new(Path.Combine(newDir.FullName, $"Readme.md"));
                         createdFiles.Add(newMdFile);
                         fileWriters.Add(newDir, newMdFile.CreateText());
-                        
+
                         currentDir = newDir;
                     }
                     if(node.FirstChild.Name == "a")
@@ -84,8 +94,8 @@ rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string t
 
     try
     {
-        DirectoryInfo currentDir = Directory.CreateDirectory(@"C:\Users\MikolajMakowski\Desktop\bookmarks");
-        createdDictionaries.Add(currentDir);
+        DirectoryInfo workingDir = Directory.CreateDirectory(Path.Combine(output.FullName,  bookmarksSource.Name.Replace(".html", "")));
+        createdDictionaries.Add(workingDir);
 
         StringBuilder validHtmlDoc = new();
         await foreach (string line in File.ReadLinesAsync(bookmarksSource.FullName))
@@ -100,7 +110,10 @@ rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string t
         bookmarksDoc.LoadHtml(validHtmlDoc.ToString());
         HtmlNode mainDl = bookmarksDoc.DocumentNode.SelectSingleNode("/dl");
 
-        await ProcessNode(mainDl, currentDir);
+        await ProcessNode(mainDl, workingDir);
+
+        Console.ForegroundColor = ConsoleColor.Green;
+        Console.WriteLine($"Bookmarks has beed successfully converted to Markdown files: {workingDir.FullName}");
     }
     catch(Exception ex)
     {
@@ -111,10 +124,10 @@ rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string t
     }
     finally
     {
+        Console.ResetColor();
+
         foreach(var (_, stream) in fileWriters)
-        {
             stream.Close();
-        }
     }
 
     foreach(FileInfo file in createdFiles)
@@ -125,6 +138,6 @@ rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string t
         if(rollback || (!keepEmpty && !dir.EnumerateFiles().Any() && !dir.EnumerateDirectories().Any()))
             dir.Delete();
     
-}, filePathArg, keepEmptyOption, recordOption);
+}, filePathArg, keepEmptyOption, recordOption, outputOption);
 
 await rootCommand.InvokeAsync(args);
