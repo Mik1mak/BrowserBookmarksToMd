@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Net;
+using System.Text;
 using System.CommandLine;
 using HtmlAgilityPack;
 
@@ -15,14 +16,14 @@ var keepEmptyOption = new Option<bool>("--keep-empty", "Keep empty files and fol
     IsRequired = false,
 };
 
-var recordOption = new Option<string>("--record",
+var recordOption = new Option<string>(["--record", "--template"],
     getDefaultValue: () => "- [{0}]({1}) <sup><sub><sub>{2}</sub></sub></sup>",
     description: "Template for bookmark record. {0}=name, {1}=href, {2}=add date.")
 {
     IsRequired = false,
 };
 
-var outputOption = new Option<DirectoryInfo>("--output", 
+var outputOption = new Option<DirectoryInfo>(["--output", "-o"],
     isDefault: true,
     parseArgument: result => {
         return result.Tokens.Any() ? new DirectoryInfo(result.Tokens.Single().Value) : new DirectoryInfo(Environment.CurrentDirectory);
@@ -40,9 +41,9 @@ var rootCommand = new RootCommand("Simple tool for converting browser bookmarks 
 };
 
 rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string template, DirectoryInfo output) => { 
-    HashSet<DirectoryInfo> createdDictionaries = new();
-    HashSet<FileInfo> createdFiles = new();
-    Dictionary<DirectoryInfo, StreamWriter> fileWriters = new();
+    Dictionary<FileInfo, (DateTime creationUtc, DateTime lastWriteUtc)> createdFiles = new();
+    Dictionary<DirectoryInfo, (DateTime creationUtc, DateTime lastWriteUtc)> createdDirectories = new();
+    Dictionary<DirectoryInfo, StreamWriter> readmeWriters = new();
 
     bool rollback = false;
 
@@ -59,18 +60,18 @@ rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string t
                     {
                         HtmlNode h3 = node.FirstChild;
 
-                        DirectoryInfo newDir = Directory.CreateDirectory(Path.Combine(thisLevelDir.FullName, h3.InnerText));
-                        createdDictionaries.Add(newDir);
+                        DirectoryInfo newDir = Directory.CreateDirectory(Path.Combine(thisLevelDir.FullName, WebUtility.HtmlDecode(h3.InnerText)));
 
-                        newDir.CreationTimeUtc = DateTimeOffset.FromUnixTimeSeconds(int.Parse(h3.Attributes["ADD_DATE"].Value)).UtcDateTime;
                         int unixTimeSecondsLastWrite = int.Parse(h3.Attributes["LAST_MODIFIED"].Value);
-                        newDir.LastWriteTimeUtc = unixTimeSecondsLastWrite == 0 
-                            ? newDir.CreationTimeUtc 
-                            : DateTimeOffset.FromUnixTimeSeconds(unixTimeSecondsLastWrite).UtcDateTime;
+                        createdDirectories.Add(newDir, (
+                            creationUtc: DateTimeOffset.FromUnixTimeSeconds(int.Parse(h3.Attributes["ADD_DATE"].Value)).UtcDateTime,
+                            lastWriteUtc: unixTimeSecondsLastWrite == 0 ? newDir.CreationTimeUtc 
+                                : DateTimeOffset.FromUnixTimeSeconds(unixTimeSecondsLastWrite).UtcDateTime
+                        ));
 
                         FileInfo newMdFile = new(Path.Combine(newDir.FullName, $"Readme.md"));
-                        createdFiles.Add(newMdFile);
-                        fileWriters.Add(newDir, newMdFile.CreateText());
+                        createdFiles.Add(newMdFile, createdDirectories[newDir]);
+                        readmeWriters.Add(newDir, newMdFile.CreateText());
 
                         currentDir = newDir;
                     }
@@ -81,7 +82,7 @@ rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string t
                         string addDate = DateTimeOffset.FromUnixTimeSeconds(int.Parse(a.Attributes["ADD_DATE"].Value))
                             .LocalDateTime.ToString("yyyy-MM-dd HH:mm");
 
-                        await fileWriters[currentDir].WriteLineAsync(string.Format(template, a.InnerText, href, addDate));
+                        await readmeWriters[currentDir].WriteLineAsync(string.Format(template, WebUtility.HtmlDecode(a.InnerText), href, addDate));
                     }
                 }
                 else if(node.Name == "dl")
@@ -95,7 +96,7 @@ rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string t
     try
     {
         DirectoryInfo workingDir = Directory.CreateDirectory(Path.Combine(output.FullName,  bookmarksSource.Name.Replace(".html", "")));
-        createdDictionaries.Add(workingDir);
+        createdDirectories.Add(workingDir, (DateTime.UtcNow, DateTime.UtcNow));
 
         StringBuilder validHtmlDoc = new();
         await foreach (string line in File.ReadLinesAsync(bookmarksSource.FullName))
@@ -126,17 +127,21 @@ rootCommand.SetHandler(async (FileInfo bookmarksSource, bool keepEmpty, string t
     {
         Console.ResetColor();
 
-        foreach(var (_, stream) in fileWriters)
+        foreach(var (_, stream) in readmeWriters)
             stream.Close();
     }
 
-    foreach(FileInfo file in createdFiles)
+    foreach((FileInfo file, (DateTime, DateTime) datesUtc) in createdFiles)
         if(rollback || (!keepEmpty && file.Length == 0))
             file.Delete();
+        else
+            (file.CreationTimeUtc, file.LastWriteTimeUtc) = datesUtc;
 
-    foreach(DirectoryInfo dir in createdDictionaries.Reverse())
+    foreach((DirectoryInfo dir, (DateTime, DateTime) datesUtc) in createdDirectories.Reverse())
         if(rollback || (!keepEmpty && !dir.EnumerateFiles().Any() && !dir.EnumerateDirectories().Any()))
             dir.Delete();
+        else
+            (dir.CreationTimeUtc, dir.LastWriteTimeUtc) = datesUtc;
     
 }, filePathArg, keepEmptyOption, recordOption, outputOption);
 

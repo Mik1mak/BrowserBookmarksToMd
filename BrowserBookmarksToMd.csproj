@@ -13,10 +13,12 @@
     <PackageType>DotnetTool</PackageType>
     <PackageProjectUrl>https://github.com/Mik1mak/BrowserBookmarksToMd</PackageProjectUrl>
     <Authors>Mik1mak</Authors>
+    <Version>1.0.1</Version>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="Readme.md" Pack="true" PackagePath="\"/>
+    <None Include="Example.png" Pack="true" PackagePath="\"/>
     <PackageReference Include="HtmlAgilityPack" Version="1.11.60" />
     <PackageReference Include="System.CommandLine" Version="2.0.0-beta4.22272.1" />
   </ItemGroup>
